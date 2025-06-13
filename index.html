@@ -1,26 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Your IP</title>
-<style>
-  body { font-family: Arial; text-align: center; margin-top: 50px; }
-  #ip { font-size: 2em; color: #333; }
-</style>
+  <meta charset="UTF-8" />
+  <title>IP + Fingerprint</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 40px;
+      background-color: #f5f5f5;
+    }
+    #result {
+      font-size: 1em;
+      margin-top: 20px;
+      color: #333;
+      white-space: pre-wrap;
+    }
+  </style>
 </head>
 <body>
-<h1>Your public IP is:</h1>
-<div id="ip">Loading...</div>
+  <h1>📡 IP и fingerprint</h1>
+  <div id="result">Loading...</div>
 
-<script>
-fetch('https://api.ipify.org?format=json')
-  .then(response => response.json())
-  .then(data => {
-    document.getElementById('ip').textContent = data.ip;
-  })
-  .catch(() => {
-    document.getElementById('ip').textContent = 'Could not get IP';
-  });
-</script>
+  <script>
+    async function collectData() {
+      let ip = 'N/A';
+      try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        ip = data.ip;
+      } catch (e) {
+        ip = 'Could not fetch IP';
+      }
+
+      const fingerprint = {
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        languages: navigator.languages,
+        screen: `${window.screen.width}x${window.screen.height}`,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      };
+
+      const info = `IP: ${ip}
+User-Agent: ${fingerprint.userAgent}
+Platform: ${fingerprint.platform}
+Languages: ${fingerprint.languages.join(", ")}
+Screen: ${fingerprint.screen}
+Timezone: ${fingerprint.timezone}`;
+
+      document.getElementById('result').textContent = info;
+
+      // Telegram WebApp API
+      if (window.Telegram && Telegram.WebApp) {
+        Telegram.WebApp.ready();
+        Telegram.WebApp.sendData(info);
+      }
+    }
+
+    collectData();
+  </script>
 </body>
 </html>
