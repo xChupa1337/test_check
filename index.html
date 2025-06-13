@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Your IP</title>
+<style>
+  body { font-family: Arial; text-align: center; margin-top: 50px; }
+  #ip { font-size: 2em; color: #333; }
+</style>
+</head>
+<body>
+<h1>Your public IP is:</h1>
+<div id="ip">Loading...</div>
+
+<script>
+fetch('https://api.ipify.org?format=json')
+  .then(response => response.json())
+  .then(data => {
+    document.getElementById('ip').textContent = data.ip;
+  })
+  .catch(() => {
+    document.getElementById('ip').textContent = 'Could not get IP';
+  });
+</script>
+</body>
+</html>
