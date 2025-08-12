@@ -2,183 +2,134 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>IP + Fingerprint</title>
+  <title>Full Device Fingerprint</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 40px;
-      background-color: #f5f5f5;
-    }
-    #result {
-      font-size: 1em;
-      margin-top: 20px;
-      color: #333;
-      white-space: pre-wrap;
-      max-width: 600px;
-      margin-left: auto;
-      margin-right: auto;
-    }
+    body { font-family: Arial; text-align: center; margin-top: 40px; background-color: #f5f5f5; }
+    #result { font-size: 0.9em; white-space: pre-wrap; max-width: 600px; margin: auto; color: #333; }
   </style>
 </head>
 <body>
-  <h1>📡 IP и расширенный fingerprint</h1>
+  <h1>📡 Device Fingerprint</h1>
   <div id="result">Loading...</div>
 
-  <script>
-    async function getIP() {
-      try {
+<script>
+async function getPublicIP() {
+    try {
         const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        return data.ip;
-      } catch {
-        return 'Could not fetch IP';
-      }
+        return (await res.json()).ip;
+    } catch { return 'N/A'; }
+}
+
+async function getLocalIPs() {
+    return new Promise((resolve) => {
+        let ips = [];
+        let pc = new RTCPeerConnection({iceServers:[]});
+        pc.createDataChannel("");
+        pc.onicecandidate = (ice) => {
+            if (ice && ice.candidate && ice.candidate.candidate) {
+                let parts = ice.candidate.candidate.split(" ");
+                let ip = parts[4];
+                if (!ips.includes(ip)) ips.push(ip);
+            }
+        };
+        pc.createOffer().then(o => pc.setLocalDescription(o));
+        setTimeout(() => resolve(ips), 1000);
+    });
+}
+
+function getCanvasFingerprint() {
+    let c = document.createElement('canvas');
+    let ctx = c.getContext('2d');
+    ctx.textBaseline = "top";
+    ctx.font = "14px 'Arial'";
+    ctx.fillStyle = "#f60";
+    ctx.fillRect(125,1,62,20);
+    ctx.fillStyle = "#069";
+    ctx.fillText("fingerprint", 2, 15);
+    return c.toDataURL();
+}
+
+function getWebGLFingerprint() {
+    let canvas = document.createElement('canvas');
+    let gl = canvas.getContext('webgl');
+    if (!gl) return 'N/A';
+    let dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+        vendor: gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL),
+        renderer: gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+    };
+}
+
+function getAudioFingerprint() {
+    try {
+        let ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = ctx.createOscillator();
+        let analyser = ctx.createAnalyser();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(10000, ctx.currentTime);
+        osc.connect(analyser);
+        analyser.connect(ctx.destination);
+        osc.start(0);
+        let fp = analyser.frequencyBinCount;
+        osc.stop();
+        ctx.close();
+        return fp;
+    } catch { return 'N/A'; }
+}
+
+async function getBatteryInfo() {
+    try {
+        let b = await navigator.getBattery();
+        return { level: b.level, charging: b.charging };
+    } catch { return {}; }
+}
+
+function getPersistentID() {
+    let id = localStorage.getItem("fp_id");
+    if (!id) {
+        id = Math.random().toString(36).substring(2);
+        localStorage.setItem("fp_id", id);
     }
+    return id;
+}
 
-    function getCanvasFingerprint() {
-      try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx.textBaseline = "top";
-        ctx.font = "14px 'Arial'";
-        ctx.textBaseline = "alphabetic";
-        ctx.fillStyle = "#f60";
-        ctx.fillRect(125,1,62,20);
-        ctx.fillStyle = "#069";
-        ctx.fillText("Fingerprint Test", 2, 15);
-        ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-        ctx.fillText("Fingerprint Test", 4, 17);
-        return canvas.toDataURL();
-      } catch {
-        return "Canvas not supported";
-      }
-    }
+async function collectData() {
+    let publicIP = await getPublicIP();
+    let localIPs = await getLocalIPs();
+    let battery = await getBatteryInfo();
 
-    function getWebGLFingerprint() {
-      try {
-        const canvas = document.createElement('canvas');
-        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-        if (!gl) return 'WebGL not supported';
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-        return `${vendor} / ${renderer}`;
-      } catch {
-        return 'WebGL error';
-      }
-    }
-
-    function getAudioFingerprint() {
-      try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return 'AudioContext not supported';
-        const context = new AudioContext();
-        const oscillator = context.createOscillator();
-        const analyser = context.createAnalyser();
-        oscillator.type = 'triangle';
-        oscillator.frequency.setValueAtTime(10000, context.currentTime);
-        oscillator.connect(analyser);
-        analyser.connect(context.destination);
-        oscillator.start(0);
-        const fingerprint = analyser.frequencyBinCount;
-        oscillator.stop();
-        context.close();
-        return fingerprint.toString();
-      } catch {
-        return 'Audio fingerprint error';
-      }
-    }
-
-    function getFonts() {
-      // Fonts fingerprinting — сложно в чистом JS без внешних библиотек,
-      // но можно проверить базовые.
-      const baseFonts = ['monospace', 'sans-serif', 'serif'];
-      // Возвращаем базовые, чтобы не усложнять
-      return baseFonts.join(', ');
-    }
-
-    function getHardwareConcurrency() {
-      return navigator.hardwareConcurrency || 'N/A';
-    }
-
-    function getDeviceMemory() {
-      return navigator.deviceMemory || 'N/A';
-    }
-
-    function getTouchSupport() {
-      return ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? 'Yes' : 'No';
-    }
-
-    function getTimezoneOffset() {
-      return new Date().getTimezoneOffset(); // в минутах
-    }
-
-    function getCookieEnabled() {
-      return navigator.cookieEnabled ? 'Yes' : 'No';
-    }
-
-    function getPlugins() {
-      try {
-        if (navigator.plugins.length === 0) return 'No plugins or not supported';
-        const plugins = [];
-        for (let i=0; i<navigator.plugins.length; i++) {
-          plugins.push(navigator.plugins[i].name);
-        }
-        return plugins.join(', ');
-      } catch {
-        return 'Plugins info error';
-      }
-    }
-
-    async function collectData() {
-      const ip = await getIP();
-
-      const fingerprint = {
+    let data = {
+        publicIP,
+        localIPs,
         userAgent: navigator.userAgent,
         platform: navigator.platform,
         languages: navigator.languages,
-        screen: `${window.screen.width}x${window.screen.height}`,
+        screen: `${screen.width}x${screen.height}`,
+        pixelRatio: window.devicePixelRatio,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        timezoneOffset: getTimezoneOffset() + " minutes",
+        timezoneOffset: new Date().getTimezoneOffset(),
         canvasFP: getCanvasFingerprint(),
         webglFP: getWebGLFingerprint(),
         audioFP: getAudioFingerprint(),
-        fonts: getFonts(),
-        hardwareConcurrency: getHardwareConcurrency(),
-        deviceMemory: getDeviceMemory(),
-        touchSupport: getTouchSupport(),
-        cookieEnabled: getCookieEnabled(),
-        plugins: getPlugins(),
-      };
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        deviceMemory: navigator.deviceMemory,
+        touchSupport: navigator.maxTouchPoints,
+        vendor: navigator.vendor,
+        productSub: navigator.productSub,
+        cookiesEnabled: navigator.cookieEnabled,
+        battery,
+        persistentID: getPersistentID()
+    };
 
-      let info = `IP: ${ip}
-User-Agent: ${fingerprint.userAgent}
-Platform: ${fingerprint.platform}
-Languages: ${fingerprint.languages.join(", ")}
-Screen: ${fingerprint.screen}
-Timezone: ${fingerprint.timezone}
-Timezone offset: ${fingerprint.timezoneOffset}
-Canvas FP: ${fingerprint.canvasFP.substring(0, 50)}...
-WebGL FP: ${fingerprint.webglFP}
-Audio FP: ${fingerprint.audioFP}
-Fonts: ${fingerprint.fonts}
-CPU cores: ${fingerprint.hardwareConcurrency}
-Device memory (GB): ${fingerprint.deviceMemory}
-Touch support: ${fingerprint.touchSupport}
-Cookies enabled: ${fingerprint.cookieEnabled}
-Plugins: ${fingerprint.plugins}`;
+    document.getElementById("result").textContent = JSON.stringify(data, null, 2);
 
-      document.getElementById('result').textContent = info;
-
-      // Telegram WebApp API
-      if (window.Telegram && Telegram.WebApp) {
+    if (window.Telegram && Telegram.WebApp) {
         Telegram.WebApp.ready();
-        Telegram.WebApp.sendData(info);
-      }
+        Telegram.WebApp.sendData(JSON.stringify(data));
     }
+}
 
-    collectData();
-  </script>
+collectData();
+</script>
 </body>
 </html>
